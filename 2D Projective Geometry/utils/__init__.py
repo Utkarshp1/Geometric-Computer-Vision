@@ -1,3 +1,3 @@
-from utils.geometric import *
-from utils.loader import *
-from utils.visualise import *
+import utils.geometric
+import utils.loader
+import utils.visualise

@@ -26,32 +26,46 @@ import os
 import cv2
 import numpy as np
 
-from utils import *
+import utils
+import utils.geometric
+import utils.loader
+import utils.test
 
-def affine_rectify(img, points, dst_shape):
-    lines = construct_lines_from_points(points, method="cross-product")
-    intersect_points = find_intersection_of_lines(lines, method="cross-product")
-    l_infinity_image = construct_lines_from_points(intersect_points, method="cross-product")
-    l_infinity_image = convert_homo_to_inhomo_coor(l_infinity_image)
+def affine_rectify(img, points):
+    lines = utils.geometric.construct_lines_from_points(points, method="cross-product")
+    intersect_points = utils.geometric.find_intersection_of_lines(
+        lines, method="cross-product")
+    l_infinity_image = utils.geometric.construct_lines_from_points(
+        intersect_points, method="cross-product")
+    l_infinity_image = utils.geometric.convert_homo_to_inhomo_coor(
+        l_infinity_image)
 
     affine_rect_matrix = np.eye(3)
     affine_rect_matrix[2] = l_infinity_image
 
-    return cv2.warpPerspective(img, affine_rect_matrix, dst_shape)
+    affine_rect_matrix, dst_shape = utils.geometric.fit_warped_image_in_frame(
+        img.shape, affine_rect_matrix)
+    interp_flag = utils.geometric.determine_interpolation(img.shape, dst_shape)
+
+    warped_img = cv2.warpPerspective(
+        img, affine_rect_matrix, dst_shape[::-1], flags=interp_flag)
+
+    return warped_img, affine_rect_matrix
 
 if __name__ == '__main__':
-    annotations = load_annotations('../16-822/assignment1/data/annotation/q1_annotation.npy')
+    annotations = utils.loader.load_annotations('../16-822/assignment1/data/annotation/q1_annotation.npy')
     img_dir = '../16-822/assignment1/data/q1'
     dst_dir = 'afine_rectified_images'
     os.makedirs(dst_dir, exist_ok=True)
 
     for img_name in os.listdir(img_dir):
+        print(img_name)
         img = cv2.imread(os.path.join(img_dir, img_name))
-        points = extract_points_from_annotations(annotations,
+        points = utils.loader.extract_points_from_annotations(annotations,
                     image_name=img_name.split('.')[0])
-        train_points = filter_lines(points, mode='train')
-        warped_img = affine_rectify(
-            img, train_points,
-            (img.shape[1], img.shape[0])
-        )
+        train_points = utils.loader.filter_lines(points, mode='train')
+        warped_img, A = affine_rectify(img, train_points)
         cv2.imwrite(os.path.join(dst_dir, img_name), warped_img)
+
+        test_points = utils.loader.filter_lines(points, mode='test')
+        utils.test.test_angles_between_lines(test_points, A)
